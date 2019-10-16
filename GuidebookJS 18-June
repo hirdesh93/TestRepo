@@ -1,0 +1,117 @@
+/*
+* @Author Mukesh Gupta
+* @Date   10 Jun 2019
+* @Purpose Guidebook - Controller is used to call apex method for retrieving the guide from Guidebook.
+*/
+
+import { LightningElement, track, api } from 'lwc';
+import getGuides from '@salesforce/apex/GuidebookApiController.getGuides';
+import getEvent from '@salesforce/apex/GuidebookApiController.getEvent';
+import SyncData from '@salesforce/apex/GuidebookApiController.SyncData';
+import { ShowToastEvent } from 'lightning/platformShowToastEvent'
+const columns = [
+  { label: 'Guide Name', fieldName: 'Name', type: 'text' },
+  { label: 'Description', fieldName: 'FMV1_Guide_Description_HTML__c', type: 'Text', title: 'FMV1_Guide_Description_HTML__c' },
+  { label: 'Start Time', fieldName: 'EventApi__Start_Date_Time__c', type: 'Text' },
+  { label: 'End Time', fieldName: 'EventApi__End_Date_Time__c', type: 'Text' }
+];
+
+export default class Guidebook extends LightningElement {
+  @track loaded = false;
+  @track data = [];
+  @api recordId;
+  @api guideId;
+  @api guideName;
+  @api startDatetime;
+  @api endDatetime;
+  @api guideDescription;
+  @api isChecked = false;
+  @api showModal = false;
+  @api buttonValue = false;
+  @api hideCheckbox = false;
+  @api apiKeyWindow = false;
+  @api columns = columns;
+
+  async connectedCallback() {
+    const datavalue = await getEvent({ eventId: this.recordId });
+    if (datavalue.FMV1_Guide_ID__c != null) {
+      this.guideName = datavalue.Name;
+      this.checkedValue = true;
+      this.hideCheckbox = true;
+    } else {
+      this.guideName = datavalue.Name;
+      const data = await getGuides({ amountOfRecords: 100 });
+      if(!this.data){
+        this.isChecked = false;
+        this.apiKeyWindow=true;
+      }else{
+        this.isChecked = true;
+      this.data = data;
+      this.tableLoadingState = true;
+      }
+    }
+  }
+/* Calling Method while Selecting the Guide */
+  getSelectedName(event) {
+    this.buttonValue = false;
+    const selectedRows = event.detail.selectedRows;
+    for (let i = 0; i < selectedRows.length; i++) {
+      this.guideId = selectedRows[i].FMV1_Guide_ID__c;
+      this.guideName = selectedRows[i].Name;
+      this.startDatetime = selectedRows[i].EventApi__Start_Date_Time__c;
+      this.endDatetime = selectedRows[i].EventApi__End_Date_Time__c;
+      this.guideDescription = selectedRows[i].FMV1_Guide_Description_HTML__c;
+    }
+  }
+  callApiKey(){
+this.apiKeyWindow=true;
+  }
+  closeModal(){
+    this.apiKeyWindow=false;
+  }
+
+  /* Calling to apex class method to sync the Guide with Event */
+  syncData() {
+    this.loaded = !this.loaded;
+    SyncData({ eventId: this.recordId, guideId: this.guideId, Name: this.guideName, description: this.guideDescription, startDate: this.startDatetime, endDate: this.endDatetime })
+      .then(() => {
+        const event = new ShowToastEvent({
+          title: 'Success',
+          message: 'Record Updated Successfully',
+          variant: 'Success'
+        });
+        this.dispatchEvent(event);
+        this.dispatchEvent(new CustomEvent('recordChange'));
+        this.loaded = false;
+        this.dispatchEvent(new CustomEvent('closeQuickAction'));
+      })
+      .catch(error => {
+        const event = new ShowToastEvent({
+          title: 'Error on Updated Record',
+          message: error.body.message,
+          variant: 'Error'
+        });
+        this.dispatchEvent(event);
+      });
+  }
+/* Passing an event to aura component for closing Quickaction Window*/
+  cancelPopUp() {
+    this.dispatchEvent(new CustomEvent('closeQuickAction'));
+  }
+  /* Calling apex method to get the Guide onchange chcekbox value*/
+  handleChange(event) {
+    this.buttonValue = true;
+    this.isChecked = event.target.checked;
+    if (this.isChecked) {
+      getGuides()
+        .then(result => {
+          this.data = result;
+        })
+        .catch(error => {
+          this.error = error;
+        });
+    } else {
+      this.data = null;
+    }
+  }
+}
